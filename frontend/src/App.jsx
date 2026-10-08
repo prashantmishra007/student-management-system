@@ -196,7 +196,7 @@ function App() {
           </div>
           <div className="form-group">
             <label>Age</label>
-            <input className="form-input" name="age" type="number" placeholder="20" value={formData.age} onChange={handleChange} />
+            <input className="form-input" name="age" type="number" min="16" max="60" placeholder="20" value={formData.age} onChange={handleChange} required />
           </div>
 
           <div className="form-actions">
