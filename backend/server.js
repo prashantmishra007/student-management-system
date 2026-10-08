@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -10,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 // Local MongoDB Connection
-mongoose.connect('mongodb://127.0.0.1:27017/student_db')
+mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/student_db')
   .then(() => console.log('MongoDB Local Database Successfully Connected!'))
   .catch((err) => console.error('MongoDB Connection Error:', err));
 
