@@ -5,6 +5,7 @@ import './App.css';
 function App() {
   const [students, setStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCourse, setSelectedCourse] = useState('ALL');
   const [editId, setEditId] = useState(null);
   const [toast, setToast] = useState(null);
   const [formData, setFormData] = useState({
@@ -128,11 +129,15 @@ function App() {
   const bcaCount = students.filter((s) => s.course?.toUpperCase() === 'BCA').length;
   const otherCoursesCount = totalStudents - bcaCount;
 
-  const filteredStudents = students.filter(
-    (s) =>
+  const filteredStudents = students.filter((s) => {
+    const matchesSearch =
       s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.rollNo?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+      s.rollNo?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCourse =
+      selectedCourse === 'ALL' ||
+      s.course?.trim().toUpperCase() === selectedCourse.toUpperCase();
+    return matchesSearch && matchesCourse;
+  });
 
   return (
     <div className="dashboard-container">
@@ -222,6 +227,17 @@ function App() {
             <button onClick={exportToCSV} className="btn btn-export">
               📥 Export CSV
             </button>
+            <select
+  className="search-input"
+  value={selectedCourse}
+  onChange={(e) => setSelectedCourse(e.target.value)}
+  style={{ width: 'auto', cursor: 'pointer' }}
+>
+  <option value="ALL">All Courses</option>
+  <option value="BCA">BCA</option>
+  <option value="B.TECH">B.Tech</option>
+  <option value="MCA">MCA</option>
+</select>
             <input
               type="text"
               className="search-input"
