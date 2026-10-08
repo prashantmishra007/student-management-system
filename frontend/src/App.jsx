@@ -15,7 +15,7 @@ function App() {
     age: ''
   });
 
-  const API_URL = 'http://localhost:5000/api/students';
+  const API_URL = 'https://student-management-system-27tx.onrender.com/api/students';
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
