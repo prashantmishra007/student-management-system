@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import './App.css';
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = 'https://student-management-system-1-47hq.onrender.com/api';
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('sms_token') || null);
