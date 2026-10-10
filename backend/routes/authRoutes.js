@@ -9,15 +9,21 @@ const { JWT_SECRET } = require('../middleware/authMiddleware');
 // Temporary in-memory OTP store (email -> { otp, expiresAt })
 const otpStore = new Map();
 
-// Robust Gmail SMTP Transporter Setup (SSL Port 465)
+// Cloud-compatible SMTP configuration (Port 587 with TLS & extended timeouts)
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false, // Port 587 uses STARTTLS
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
-  }
+  },
+  tls: {
+    rejectUnauthorized: false
+  },
+  connectionTimeout: 25000,
+  greetingTimeout: 25000,
+  socketTimeout: 25000
 });
 
 // Register Route
