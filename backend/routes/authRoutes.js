@@ -2,29 +2,15 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const User = require('../models/User');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
 
+// Initialize Resend API client
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 // Temporary in-memory OTP store (email -> { otp, expiresAt })
 const otpStore = new Map();
-
-// Cloud-compatible SMTP configuration (Port 587 with TLS & extended timeouts)
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Port 587 uses STARTTLS
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  },
-  tls: {
-    rejectUnauthorized: false
-  },
-  connectionTimeout: 25000,
-  greetingTimeout: 25000,
-  socketTimeout: 25000
-});
 
 // Register Route
 router.post('/register', async (req, res) => {
@@ -88,7 +74,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Forgot Password - Send OTP
+// Forgot Password - Send OTP via Resend API
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -103,31 +89,35 @@ router.post('/forgot-password', async (req, res) => {
 
     // 6-digit random OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
     otpStore.set(email.toLowerCase(), { otp, expiresAt });
 
-    const mailOptions = {
-      from: `"Student Management Pro" <${process.env.EMAIL_USER}>`,
-      to: email.toLowerCase(),
+    const { data, error } = await resend.emails.send({
+      from: 'Student Management Pro <onboarding@resend.dev>',
+      to: [email.toLowerCase()],
       subject: 'Password Reset OTP - Student Management System Pro',
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
           <h2 style="color: #0ea5e9;">Password Reset Request</h2>
           <p>Hi ${user.name},</p>
-          <p>Your one-time password (OTP) to reset your account password is:</p>
-          <div style="font-size: 24px; font-weight: bold; letter-spacing: 4px; padding: 12px; background: #f3f4f6; display: inline-block; border-radius: 6px; margin: 10px 0;">
+          <p>Your one-time OTP to reset your password is:</p>
+          <div style="font-size: 26px; font-weight: bold; letter-spacing: 5px; padding: 12px 20px; background: #f3f4f6; display: inline-block; border-radius: 6px; margin: 12px 0; color: #0284c7;">
             ${otp}
           </div>
-          <p>This code is valid for 10 minutes. If you did not request this, please ignore this email.</p>
+          <p>This code will expire in 10 minutes. If you did not make this request, you can safely ignore this email.</p>
         </div>
       `
-    };
+    });
 
-    await transporter.sendMail(mailOptions);
+    if (error) {
+      console.error('Resend API Error:', error);
+      return res.status(500).json({ message: 'Failed to send OTP email', error: error.message });
+    }
+
     res.json({ message: 'OTP sent successfully to your email!' });
   } catch (error) {
-    console.error('Nodemailer Send Error:', error);
+    console.error('Forgot Password Exception:', error);
     res.status(500).json({ message: 'Failed to send OTP email', error: error.message });
   }
 });
@@ -165,7 +155,7 @@ router.post('/reset-password', async (req, res) => {
     otpStore.delete(email.toLowerCase());
     res.json({ message: 'Password has been reset successfully!' });
   } catch (error) {
-    console.error('Reset Password Error:', error);
+    console.error('Reset Password Exception:', error);
     res.status(500).json({ message: 'Error resetting password', error: error.message });
   }
 });
