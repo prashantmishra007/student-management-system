@@ -9,9 +9,11 @@ const { JWT_SECRET } = require('../middleware/authMiddleware');
 // Temporary in-memory OTP store (email -> { otp, expiresAt })
 const otpStore = new Map();
 
-// Nodemailer Transporter Setup
+// Robust Gmail SMTP Transporter Setup (SSL Port 465)
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
@@ -119,6 +121,7 @@ router.post('/forgot-password', async (req, res) => {
     await transporter.sendMail(mailOptions);
     res.json({ message: 'OTP sent successfully to your email!' });
   } catch (error) {
+    console.error('Nodemailer Send Error:', error);
     res.status(500).json({ message: 'Failed to send OTP email', error: error.message });
   }
 });
@@ -156,6 +159,7 @@ router.post('/reset-password', async (req, res) => {
     otpStore.delete(email.toLowerCase());
     res.json({ message: 'Password has been reset successfully!' });
   } catch (error) {
+    console.error('Reset Password Error:', error);
     res.status(500).json({ message: 'Error resetting password', error: error.message });
   }
 });
