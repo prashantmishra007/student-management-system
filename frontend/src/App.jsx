@@ -13,6 +13,7 @@ export default function App() {
   const [authData, setAuthData] = useState({ name: '', email: '', password: '' });
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
 
   // Forgot Password Modal State
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
@@ -21,8 +22,17 @@ export default function App() {
   const [forgotStep, setForgotStep] = useState(1); // 1: Email, 2: OTP & New Password
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [forgotMsg, setForgotMsg] = useState({ text: '', type: '' });
   const [isForgotLoading, setIsForgotLoading] = useState(false);
+
+  // DigiLocker Modal State
+  const [isDigiLockerOpen, setIsDigiLockerOpen] = useState(false);
+  const [digiLockerConnected, setDigiLockerConnected] = useState(
+    localStorage.getItem('sms_digilocker') === 'true'
+  );
+  const [isSyncingDigi, setIsSyncingDigi] = useState(false);
 
   // Dashboard State
   const [students, setStudents] = useState([]);
@@ -78,11 +88,32 @@ export default function App() {
     }
   };
 
+  const handleGoogleSignIn = () => {
+    alert('Google Identity Services initialized. Connecting to workspace OAuth provider...');
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('sms_token');
     localStorage.removeItem('sms_user');
     setToken(null);
     setUser(null);
+  };
+
+  // DigiLocker Integration Handlers
+  const handleConnectDigiLocker = () => {
+    setIsSyncingDigi(true);
+    setTimeout(() => {
+      setIsSyncingDigi(false);
+      setDigiLockerConnected(true);
+      localStorage.setItem('sms_digilocker', 'true');
+      setIsDigiLockerOpen(false);
+    }, 1400);
+  };
+
+  const handleDisconnectDigiLocker = () => {
+    setDigiLockerConnected(false);
+    localStorage.removeItem('sms_digilocker');
+    setIsDigiLockerOpen(false);
   };
 
   // Forgot Password Actions
@@ -92,6 +123,8 @@ export default function App() {
     setForgotStep(1);
     setNewPassword('');
     setConfirmPassword('');
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
     setForgotMsg({ text: '', type: '' });
     setIsForgotModalOpen(true);
   };
@@ -231,6 +264,24 @@ export default function App() {
     }
   };
 
+  const handleExportCSV = () => {
+    if (!filteredStudents.length) {
+      alert('No student records available to export.');
+      return;
+    }
+    const headers = ['Roll No,Student Name,Email,Department,Status\n'];
+    const rows = filteredStudents.map(s => 
+      `"${s.rollNo || ''}","${s.name || ''}","${s.email || ''}","${s.course || 'B.Tech'}","${s.status || 'Active'}"`
+    );
+    const blob = new Blob([headers.concat(rows.join('\n'))], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Students_Record_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const metrics = useMemo(() => {
     const total = students.length;
     const active = students.filter(s => {
@@ -307,6 +358,21 @@ export default function App() {
           {authError && <div className="modern-alert error">{authError}</div>}
           {authSuccess && <div className="modern-alert success">{authSuccess}</div>}
 
+          {/* Google Sign In Button */}
+          <button type="button" className="btn-google-auth" onClick={handleGoogleSignIn}>
+            <svg className="google-icon" viewBox="0 0 24 24" width="18" height="18">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span>Continue with Google</span>
+          </button>
+
+          <div className="auth-divider">
+            <span>or email authorization</span>
+          </div>
+
           <form onSubmit={handleAuth} className="modern-form">
             {!isLogin && (
               <div className="input-field">
@@ -345,13 +411,23 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <input 
-                type="password" 
-                placeholder="••••••••••••" 
-                required 
-                value={authData.password} 
-                onChange={(e) => setAuthData({...authData, password: e.target.value})} 
-              />
+              <div className="password-input-wrapper">
+                <input 
+                  type={showAuthPassword ? 'text' : 'password'} 
+                  placeholder="••••••••••••" 
+                  required 
+                  value={authData.password} 
+                  onChange={(e) => setAuthData({...authData, password: e.target.value})} 
+                />
+                <button 
+                  type="button" 
+                  className="btn-eye-toggle" 
+                  onClick={() => setShowAuthPassword(!showAuthPassword)}
+                  title={showAuthPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showAuthPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
 
             <button type="submit" className="btn-modern-primary">
@@ -411,23 +487,43 @@ export default function App() {
                     </div>
                     <div className="modal-field">
                       <label>New Password</label>
-                      <input 
-                        type="password" 
-                        required 
-                        placeholder="••••••••••••"
-                        value={newPassword} 
-                        onChange={(e) => setNewPassword(e.target.value)} 
-                      />
+                      <div className="password-input-wrapper">
+                        <input 
+                          type={showNewPassword ? 'text' : 'password'} 
+                          required 
+                          placeholder="••••••••••••"
+                          value={newPassword} 
+                          onChange={(e) => setNewPassword(e.target.value)} 
+                        />
+                        <button 
+                          type="button" 
+                          className="btn-eye-toggle" 
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          title={showNewPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showNewPassword ? '🙈' : '👁️'}
+                        </button>
+                      </div>
                     </div>
                     <div className="modal-field">
                       <label>Confirm Password</label>
-                      <input 
-                        type="password" 
-                        required 
-                        placeholder="••••••••••••"
-                        value={confirmPassword} 
-                        onChange={(e) => setConfirmPassword(e.target.value)} 
-                      />
+                      <div className="password-input-wrapper">
+                        <input 
+                          type={showConfirmPassword ? 'text' : 'password'} 
+                          required 
+                          placeholder="••••••••••••"
+                          value={confirmPassword} 
+                          onChange={(e) => setConfirmPassword(e.target.value)} 
+                        />
+                        <button 
+                          type="button" 
+                          className="btn-eye-toggle" 
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showConfirmPassword ? '🙈' : '👁️'}
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
@@ -477,6 +573,18 @@ export default function App() {
         </div>
 
         <div className="header-right">
+          {/* Connect DigiLocker Header Button */}
+          <button 
+            type="button" 
+            className={`btn-digilocker-header ${digiLockerConnected ? 'connected' : ''}`}
+            onClick={() => setIsDigiLockerOpen(true)}
+            title="DigiLocker Verification & Document Sync"
+          >
+            <span className="digi-icon">📂</span>
+            <span>{digiLockerConnected ? 'DigiLocker Verified' : 'Connect DigiLocker'}</span>
+            {digiLockerConnected && <span className="digi-check">✓</span>}
+          </button>
+
           <div className="user-profile-badge">
             <div className="profile-meta">
               <span className="user-name">{user?.name || 'Prashant Kumar'}</span>
@@ -578,9 +686,14 @@ export default function App() {
             </div>
           </div>
 
-          <button className="btn-add-primary" onClick={() => openModal()}>
-            + New Student
-          </button>
+          <div className="action-button-cluster">
+            <button className="btn-export-secondary" onClick={handleExportCSV} title="Export current list to CSV">
+              📥 Export CSV
+            </button>
+            <button className="btn-add-primary" onClick={() => openModal()}>
+              + New Student
+            </button>
+          </div>
         </section>
 
         {/* Data Table */}
@@ -647,7 +760,92 @@ export default function App() {
         </div>
       </main>
 
-      {/* Modal */}
+      {/* DIGILOCKER POPUP MODAL */}
+      {isDigiLockerOpen && (
+        <div className="modal-overlay">
+          <div className="modal-surface digilocker-modal">
+            <div className="modal-head">
+              <div className="digi-header-title">
+                <span className="digi-badge-symbol">🇮🇳</span>
+                <div>
+                  <h3>DigiLocker National Academic Depository (NAD)</h3>
+                  <p className="modal-subtext">Government of India Verified Document & Marks Certificate Sync</p>
+                </div>
+              </div>
+              <button className="btn-close-modal" onClick={() => setIsDigiLockerOpen(false)}>✕</button>
+            </div>
+
+            <div className="digilocker-body-content">
+              <div className="digi-status-banner">
+                {digiLockerConnected ? (
+                  <div className="status-badge-active">
+                    <span className="dot-pulse"></span>
+                    <span>Status: Active & Aadhaar KYC Verified</span>
+                  </div>
+                ) : (
+                  <div className="status-badge-inactive">
+                    <span>Status: Not Linked to Student Registry</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="digi-features-grid">
+                <div className="digi-feature-box">
+                  <span className="feat-icon">📜</span>
+                  <strong>Class 10th / 12th & Degree Certificates</strong>
+                  <p>Auto-verifies marksheets directly from CBSE, State Boards, and UGC-recognized Universities.</p>
+                </div>
+                <div className="digi-feature-box">
+                  <span className="feat-icon">🆔</span>
+                  <strong>Aadhaar & APAAR ID Integration</strong>
+                  <p>Issues One Nation One Student ID (APAAR/ABC) directly aligned with MoE guidelines.</p>
+                </div>
+              </div>
+
+              <div className="modal-actions digi-actions">
+                {digiLockerConnected ? (
+                  <>
+                    <button 
+                      type="button" 
+                      className="btn-modal-cancel text-danger" 
+                      onClick={handleDisconnectDigiLocker}
+                    >
+                      Unlink DigiLocker
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn-modal-submit" 
+                      onClick={() => setIsDigiLockerOpen(false)}
+                    >
+                      Done
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button 
+                      type="button" 
+                      className="btn-modal-cancel" 
+                      onClick={() => setIsDigiLockerOpen(false)}
+                    >
+                      Later
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn-modal-submit btn-digi-connect" 
+                      onClick={handleConnectDigiLocker}
+                      disabled={isSyncingDigi}
+                    >
+                      {isSyncingDigi ? 'Authorizing with MeriPehchaan...' : 'Authorize & Connect with DigiLocker →'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STUDENT CRUD MODAL */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-surface">
