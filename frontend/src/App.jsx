@@ -17,10 +17,12 @@ export default function App() {
   // Forgot Password Modal State
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotStep, setForgotStep] = useState(1); // 1: Email, 2: New Password
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotStep, setForgotStep] = useState(1); // 1: Email, 2: OTP & New Password
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [forgotMsg, setForgotMsg] = useState({ text: '', type: '' });
+  const [isForgotLoading, setIsForgotLoading] = useState(false);
 
   // Dashboard State
   const [students, setStudents] = useState([]);
@@ -86,6 +88,7 @@ export default function App() {
   // Forgot Password Actions
   const handleOpenForgot = () => {
     setForgotEmail(authData.email || '');
+    setForgotOtp('');
     setForgotStep(1);
     setNewPassword('');
     setConfirmPassword('');
@@ -93,16 +96,36 @@ export default function App() {
     setIsForgotModalOpen(true);
   };
 
-  const handleForgotSubmit = (e) => {
+  const handleForgotSubmit = async (e) => {
     e.preventDefault();
+    setForgotMsg({ text: '', type: '' });
+
     if (forgotStep === 1) {
       if (!forgotEmail) {
-        setForgotMsg({ text: 'Please enter a valid registered email address.', type: 'error' });
+        setForgotMsg({ text: 'Please enter a valid email address.', type: 'error' });
         return;
       }
-      setForgotMsg({ text: `Verification link / OTP simulated for ${forgotEmail}. Please enter new credentials.`, type: 'success' });
-      setForgotStep(2);
+      try {
+        setIsForgotLoading(true);
+        const res = await axios.post(`${API_BASE}/auth/forgot-password`, { email: forgotEmail });
+        setForgotMsg({ 
+          text: res.data?.message || `OTP sent to ${forgotEmail}. Please check your inbox!`, 
+          type: 'success' 
+        });
+        setForgotStep(2);
+      } catch (err) {
+        setForgotMsg({ 
+          text: err.response?.data?.message || 'Failed to send recovery email. Please verify email.', 
+          type: 'error' 
+        });
+      } finally {
+        setIsForgotLoading(false);
+      }
     } else {
+      if (!forgotOtp.trim()) {
+        setForgotMsg({ text: 'Please enter the OTP received in your email.', type: 'error' });
+        return;
+      }
       if (newPassword.length < 6) {
         setForgotMsg({ text: 'Password must be at least 6 characters.', type: 'error' });
         return;
@@ -111,11 +134,32 @@ export default function App() {
         setForgotMsg({ text: 'Passwords do not match.', type: 'error' });
         return;
       }
-      setForgotMsg({ text: 'Password reset request verified. You may now sign in or register.', type: 'success' });
-      setTimeout(() => {
-        setIsForgotModalOpen(false);
-        setAuthSuccess('Password updated. Please log in with your updated password.');
-      }, 1500);
+
+      try {
+        setIsForgotLoading(true);
+        const res = await axios.post(`${API_BASE}/auth/reset-password`, {
+          email: forgotEmail,
+          otp: forgotOtp.trim(),
+          newPassword
+        });
+
+        setForgotMsg({ 
+          text: res.data?.message || 'Password successfully updated!', 
+          type: 'success' 
+        });
+
+        setTimeout(() => {
+          setIsForgotModalOpen(false);
+          setAuthSuccess('Password reset complete. You can now log in.');
+        }, 1500);
+      } catch (err) {
+        setForgotMsg({ 
+          text: err.response?.data?.message || 'Invalid or expired OTP. Please try again.', 
+          type: 'error' 
+        });
+      } finally {
+        setIsForgotLoading(false);
+      }
     }
   };
 
@@ -329,8 +373,8 @@ export default function App() {
                   <h3>Reset Access Credentials</h3>
                   <p className="modal-subtext">
                     {forgotStep === 1 
-                      ? 'Enter your registered work email to receive password recovery instructions.' 
-                      : 'Create a new secure password for your account.'}
+                      ? 'Enter your registered work email to receive a verification OTP.' 
+                      : 'Enter the 6-digit OTP sent to your email and set your new password.'}
                   </p>
                 </div>
                 <button className="btn-close-modal" onClick={() => setIsForgotModalOpen(false)}>✕</button>
@@ -354,6 +398,17 @@ export default function App() {
                   </div>
                 ) : (
                   <>
+                    <div className="modal-field">
+                      <label>Verification OTP</label>
+                      <input 
+                        type="text" 
+                        required 
+                        maxLength="6"
+                        placeholder="Enter 6-digit OTP from email"
+                        value={forgotOtp} 
+                        onChange={(e) => setForgotOtp(e.target.value)} 
+                      />
+                    </div>
                     <div className="modal-field">
                       <label>New Password</label>
                       <input 
@@ -385,8 +440,10 @@ export default function App() {
                   >
                     Cancel
                   </button>
-                  <button type="submit" className="btn-modal-submit">
-                    {forgotStep === 1 ? 'Send Recovery Code →' : 'Confirm New Password'}
+                  <button type="submit" className="btn-modal-submit" disabled={isForgotLoading}>
+                    {isForgotLoading 
+                      ? 'Processing...' 
+                      : (forgotStep === 1 ? 'Send Recovery Code →' : 'Verify & Update Password')}
                   </button>
                 </div>
               </form>
