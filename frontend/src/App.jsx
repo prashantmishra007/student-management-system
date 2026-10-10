@@ -1,289 +1,550 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import './App.css';
 
-function App() {
+const API_BASE = 'http://localhost:5000/api';
+
+export default function App() {
+  const [token, setToken] = useState(localStorage.getItem('sms_token') || null);
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem('sms_user')) || null);
+
+  // Authentication State
+  const [isLogin, setIsLogin] = useState(true);
+  const [authData, setAuthData] = useState({ name: '', email: '', password: '' });
+  const [authError, setAuthError] = useState('');
+
+  // Dashboard State
   const [students, setStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCourse, setSelectedCourse] = useState('ALL');
-  const [editId, setEditId] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [branchFilter, setBranchFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingStudentId, setEditingStudentId] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     rollNo: '',
     email: '',
-    course: '',
-    age: ''
+    course: 'B.Tech',
+    status: 'Active'
   });
 
-  const API_URL = 'https://student-management-system-27tx.onrender.com/api/students';
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => {
-      setToast(null);
-    }, 3000);
-  };
+  useEffect(() => {
+    if (token) {
+      fetchStudents();
+    }
+  }, [token]);
 
   const fetchStudents = async () => {
     try {
-      const res = await axios.get(API_URL);
+      const res = await axios.get(`${API_BASE}/students`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setStudents(res.data);
     } catch (err) {
-      showToast('Error loading students', 'error');
+      console.error('Data sync error:', err);
     }
   };
 
-  useEffect(() => {
-    fetchStudents();
-  }, []);
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e) => {
+  const handleAuth = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.rollNo.trim()) {
-      showToast('Name and Roll Number are required!', 'error');
-      return;
-    }
-
+    setAuthError('');
     try {
-      if (editId) {
-        await axios.put(`${API_URL}/${editId}`, formData);
-        showToast('Student record updated successfully!', 'success');
-        setEditId(null);
+      const endpoint = isLogin ? '/auth/login' : '/auth/register';
+      const payload = isLogin 
+        ? { email: authData.email, password: authData.password }
+        : authData;
+
+      const res = await axios.post(`${API_BASE}${endpoint}`, payload);
+      localStorage.setItem('sms_token', res.data.token);
+      localStorage.setItem('sms_user', JSON.stringify(res.data.user));
+      setToken(res.data.token);
+      setUser(res.data.user);
+    } catch (err) {
+      setAuthError(err.response?.data?.message || 'Authentication failed. Please verify credentials.');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('sms_token');
+    localStorage.removeItem('sms_user');
+    setToken(null);
+    setUser(null);
+  };
+
+  const openModal = (student = null) => {
+    if (student) {
+      setEditingStudentId(student._id);
+      setFormData({
+        name: student.name || '',
+        rollNo: student.rollNo || '',
+        email: student.email || '',
+        course: student.course || 'B.Tech',
+        status: student.status ? (student.status.charAt(0).toUpperCase() + student.status.slice(1).toLowerCase()) : 'Active'
+      });
+    } else {
+      setEditingStudentId(null);
+      setFormData({
+        name: '',
+        rollNo: '',
+        email: '',
+        course: 'B.Tech',
+        status: 'Active'
+      });
+    }
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingStudentId(null);
+  };
+
+  const handleSaveStudent = async (e) => {
+    e.preventDefault();
+    try {
+      const config = {
+        headers: { Authorization: `Bearer ${token}` }
+      };
+
+      const payload = {
+        name: formData.name.trim(),
+        rollNo: formData.rollNo.trim(),
+        email: formData.email.trim(),
+        course: formData.course,
+        status: formData.status
+      };
+
+      if (editingStudentId) {
+        await axios.put(`${API_BASE}/students/${editingStudentId}`, payload, config);
       } else {
-        await axios.post(`${API_URL}/add`, formData);
-        showToast('Student enrolled successfully!', 'success');
+        await axios.post(`${API_BASE}/students`, payload, config);
       }
-      setFormData({ name: '', rollNo: '', email: '', course: '', age: '' });
+
+      closeModal();
       fetchStudents();
     } catch (err) {
-      showToast(err.response?.data?.message || 'Operation failed', 'error');
+      alert(err.response?.data?.message || 'Failed to update student. Please check server connection.');
     }
-  };
-
-  const handleEdit = (std) => {
-    setEditId(std._id);
-    setFormData({
-      name: std.name,
-      rollNo: std.rollNo,
-      email: std.email,
-      course: std.course,
-      age: std.age || ''
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleCancelEdit = () => {
-    setEditId(null);
-    setFormData({ name: '', rollNo: '', email: '', course: '', age: '' });
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this record?')) {
-      try {
-        await axios.delete(`${API_URL}/${id}`);
-        showToast('Student record deleted!', 'info');
-        fetchStudents();
-      } catch (err) {
-        showToast('Failed to delete student', 'error');
-      }
+    if (!window.confirm('Are you sure you want to remove this record?')) return;
+    try {
+      await axios.delete(`${API_BASE}/students/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchStudents();
+    } catch (err) {
+      alert('Delete operation encountered an issue.');
     }
   };
 
-  // Export to CSV Function
-  const exportToCSV = () => {
-    if (students.length === 0) {
-      showToast('No records available to export!', 'error');
-      return;
-    }
+  const metrics = useMemo(() => {
+    const total = students.length;
+    const active = students.filter(s => {
+      const st = (s.status || 'Active').trim().toLowerCase();
+      return st === 'active';
+    }).length;
 
-    const headers = ['Roll No', 'Name', 'Course', 'Email', 'Age'];
-    const rows = students.map((s) => [
-      `"${s.rollNo}"`,
-      `"${s.name}"`,
-      `"${s.course}"`,
-      `"${s.email}"`,
-      `"${s.age || ''}"`
-    ]);
+    const branchCounts = {};
+    students.forEach(s => {
+      const b = (s.course || 'General').toUpperCase();
+      branchCounts[b] = (branchCounts[b] || 0) + 1;
+    });
 
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    return { total, active, branchCounts };
+  }, [students]);
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Students_Report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const filteredStudents = useMemo(() => {
+    return students.filter(student => {
+      const search = searchTerm.toLowerCase();
+      const name = (student.name || '').toLowerCase();
+      const roll = (student.rollNo || '').toLowerCase();
+      const email = (student.email || '').toLowerCase();
 
-    showToast('CSV downloaded successfully!', 'success');
-  };
+      const matchesSearch = name.includes(search) || roll.includes(search) || email.includes(search);
+      
+      const st = (student.status || 'Active').trim().toLowerCase();
+      const matchesStatus = statusFilter === 'All' || st === statusFilter.toLowerCase();
 
-  const totalStudents = students.length;
-  const bcaCount = students.filter((s) => s.course?.toUpperCase() === 'BCA').length;
-  const otherCoursesCount = totalStudents - bcaCount;
+      const cr = (student.course || 'B.Tech').toUpperCase();
+      const matchesBranch = branchFilter === 'All' || cr === branchFilter.toUpperCase();
 
-  const filteredStudents = students.filter((s) => {
-    const matchesSearch =
-      s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.rollNo?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCourse =
-      selectedCourse === 'ALL' ||
-      s.course?.trim().toUpperCase() === selectedCourse.toUpperCase();
-    return matchesSearch && matchesCourse;
-  });
+      return matchesSearch && matchesStatus && matchesBranch;
+    });
+  }, [students, searchTerm, statusFilter, branchFilter]);
 
-  return (
-    <div className="dashboard-container">
-      {toast && (
-        <div className="toast-container">
-          <div className={`toast toast-${toast.type}`}>
-            <span>{toast.message}</span>
-          </div>
-        </div>
-      )}
-
-      <div className="dashboard-header">
-        <h1>Student Portal Dashboard</h1>
-        <p>Real-time MERN Database Management</p>
-      </div>
-
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon icon-blue">👥</div>
-          <div className="stat-info">
-            <h4>Total Enrolled</h4>
-            <p>{totalStudents}</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon icon-purple">🎓</div>
-          <div className="stat-info">
-            <h4>BCA Students</h4>
-            <p>{bcaCount}</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon icon-emerald">📚</div>
-          <div className="stat-info">
-            <h4>Other Courses</h4>
-            <p>{otherCoursesCount}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <h2 className="card-title">{editId ? '✏️ Edit Student Details' : '➕ Register New Student'}</h2>
-        <form onSubmit={handleSubmit} className="form-grid">
-          <div className="form-group">
-            <label>Full Name</label>
-            <input className="form-input" name="name" placeholder="Rahul Sharma" value={formData.name} onChange={handleChange} required />
-          </div>
-          <div className="form-group">
-            <label>Roll Number</label>
-            <input className="form-input" name="rollNo" placeholder="BCA-2026-01" value={formData.rollNo} onChange={handleChange} required />
-          </div>
-          <div className="form-group">
-            <label>Email Address</label>
-            <input className="form-input" name="email" type="email" placeholder="student@example.com" value={formData.email} onChange={handleChange} required />
-          </div>
-          <div className="form-group">
-            <label>Course</label>
-            <input className="form-input" name="course" placeholder="BCA / B.Tech" value={formData.course} onChange={handleChange} required />
-          </div>
-          <div className="form-group">
-            <label>Age</label>
-            <input className="form-input" name="age" type="number" min="16" max="60" placeholder="20" value={formData.age} onChange={handleChange} required />
+  // Login / Register View
+  if (!token) {
+    return (
+      <div className="auth-viewport">
+        <div className="auth-card-modern">
+          <div className="brand-header">
+            <div className="avatar-frame glowing">
+              <img 
+                src="/prashant.jpg.jpeg" 
+                alt="Prashant Kumar" 
+                className="brand-avatar-img"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.parentElement.innerHTML = '<div class="avatar-fallback">PK</div>';
+                }}
+              />
+            </div>
+            <h1 className="brand-title">Prashant Kumar</h1>
+            <p className="brand-tagline">Student Management System Pro</p>
           </div>
 
-          <div className="form-actions">
-            <button type="submit" className={`btn ${editId ? 'btn-success' : 'btn-primary'}`}>
-              {editId ? 'Update Record' : 'Enroll Student'}
+          <div className="auth-mode-switch">
+            <button 
+              type="button" 
+              className={`mode-tab ${isLogin ? 'active' : ''}`} 
+              onClick={() => { setIsLogin(true); setAuthError(''); }}
+            >
+              Sign In
             </button>
-            {editId && (
-              <button type="button" onClick={handleCancelEdit} className="btn btn-secondary">
-                Cancel
-              </button>
+            <button 
+              type="button" 
+              className={`mode-tab ${!isLogin ? 'active' : ''}`} 
+              onClick={() => { setIsLogin(false); setAuthError(''); }}
+            >
+              Register
+            </button>
+          </div>
+
+          {authError && <div className="modern-alert error">{authError}</div>}
+
+          <form onSubmit={handleAuth} className="modern-form">
+            {!isLogin && (
+              <div className="input-field">
+                <label>Full Name</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. John Doe" 
+                  required 
+                  value={authData.name} 
+                  onChange={(e) => setAuthData({...authData, name: e.target.value})} 
+                />
+              </div>
             )}
-          </div>
-        </form>
-      </div>
 
-      <div className="card">
-        <div className="table-header-bar">
-          <h2 className="card-title" style={{ margin: 0 }}>
-            Student Records <span style={{ color: '#64748b', fontSize: '15px' }}>({filteredStudents.length})</span>
-          </h2>
-          
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <button onClick={exportToCSV} className="btn btn-export">
-              📥 Export CSV
+            <div className="input-field">
+              <label>Work Email</label>
+              <input 
+                type="email" 
+                placeholder="name@company.com" 
+                required 
+                value={authData.email} 
+                onChange={(e) => setAuthData({...authData, email: e.target.value})} 
+              />
+            </div>
+
+            <div className="input-field">
+              <label>Password</label>
+              <input 
+                type="password" 
+                placeholder="••••••••••••" 
+                required 
+                value={authData.password} 
+                onChange={(e) => setAuthData({...authData, password: e.target.value})} 
+              />
+            </div>
+
+            <button type="submit" className="btn-modern-primary">
+              {isLogin ? 'Access Workspace →' : 'Create Free Account →'}
             </button>
-            <select
-  className="search-input"
-  value={selectedCourse}
-  onChange={(e) => setSelectedCourse(e.target.value)}
-  style={{ width: 'auto', cursor: 'pointer' }}
->
-  <option value="ALL">All Courses</option>
-  <option value="BCA">BCA</option>
-  <option value="B.TECH">B.Tech</option>
-  <option value="MCA">MCA</option>
-</select>
-            <input
-              type="text"
-              className="search-input"
-              placeholder="🔍 Search name or roll..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+          </form>
+
+          <div className="auth-footer-badge">
+            <span>🛡️ Enterprise Data Security & JWT Authorization</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Dashboard View
+  return (
+    <div className="app-container">
+      <header className="app-header">
+        <div className="header-left">
+          <div className="avatar-frame header-mini">
+            <img 
+              src="/prashant.jpg.jpeg" 
+              alt="Prashant Kumar" 
+              className="brand-avatar-img"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.parentElement.innerHTML = '<div class="avatar-fallback mini">PK</div>';
+              }}
             />
           </div>
+          <div className="brand-cluster">
+            <span className="platform-name">Prashant Kumar</span>
+            <span className="creator-sub">Student Management System Pro</span>
+          </div>
         </div>
 
-        <div className="table-wrapper">
-          <table className="modern-table">
+        <div className="header-right">
+          <div className="user-profile-badge">
+            <div className="profile-meta">
+              <span className="user-name">{user?.name || 'Prashant Kumar'}</span>
+              <span className="user-role">System Admin</span>
+            </div>
+          </div>
+          <button className="btn-modern-logout" onClick={handleLogout}>Sign Out</button>
+        </div>
+      </header>
+
+      <main className="dashboard-body">
+        {/* KPI Metric Cards */}
+        <section className="kpi-grid">
+          <div className="kpi-card">
+            <div className="kpi-header">
+              <span className="kpi-title">Total Registered</span>
+              <span className="kpi-icon-badge blue">👥</span>
+            </div>
+            <div className="kpi-figure">{metrics.total}</div>
+            <p className="kpi-hint">Total student database entries</p>
+          </div>
+
+          <div className="kpi-card">
+            <div className="kpi-header">
+              <span className="kpi-title">Active Enrolled</span>
+              <span className="kpi-icon-badge emerald">⚡</span>
+            </div>
+            <div className="kpi-figure text-emerald">{metrics.active}</div>
+            <p className="kpi-hint">Current active standing students</p>
+          </div>
+
+          <div className="kpi-card wide">
+            <div className="kpi-header">
+              <span className="kpi-title">Department Distribution</span>
+              <span className="kpi-icon-badge crimson">📊</span>
+            </div>
+            <div className="branch-pills-container">
+              {Object.keys(metrics.branchCounts).length > 0 ? (
+                Object.entries(metrics.branchCounts).map(([branch, count]) => (
+                  <div key={branch} className="branch-metric-pill">
+                    <span className="branch-key">{branch}</span>
+                    <span className="branch-value">{count}</span>
+                  </div>
+                ))
+              ) : (
+                <span className="empty-branches">No departmental data loaded</span>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Action Bar */}
+        <section className="action-bar">
+          <div className="search-filter-wrap">
+            <div className="search-input-wrapper">
+              <span className="search-icon">🔍</span>
+              <input 
+                type="text" 
+                placeholder="Search by student name, roll number, or email..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input-search"
+              />
+              {searchTerm && (
+                <button 
+                  type="button" 
+                  className="btn-clear-search" 
+                  onClick={() => setSearchTerm('')}
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div className="filter-dropdown-group">
+              <select 
+                value={branchFilter} 
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="select-custom"
+              >
+                <option value="All">All Departments</option>
+                <option value="B.Tech">B.Tech</option>
+                <option value="BCA">BCA</option>
+                <option value="MCA">MCA</option>
+                <option value="MBA">MBA</option>
+              </select>
+
+              <select 
+                value={statusFilter} 
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="select-custom"
+              >
+                <option value="All">All Statuses</option>
+                <option value="Active">Active</option>
+                <option value="Graduated">Graduated</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+
+          <button className="btn-add-primary" onClick={() => openModal()}>
+            + New Student
+          </button>
+        </section>
+
+        {/* Data Table */}
+        <div className="table-card">
+          <table className="enterprise-table">
             <thead>
               <tr>
-                <th>Roll No</th>
-                <th>Name</th>
-                <th>Course</th>
-                <th>Email</th>
-                <th style={{ textAlign: 'center' }}>Actions</th>
+                <th>ROLL NO</th>
+                <th>STUDENT NAME</th>
+                <th>EMAIL</th>
+                <th>DEPARTMENT</th>
+                <th>STATUS</th>
+                <th style={{ textAlign: 'right' }}>ACTIONS</th>
               </tr>
             </thead>
             <tbody>
               {filteredStudents.length > 0 ? (
-                filteredStudents.map((std) => (
-                  <tr key={std._id}>
-                    <td style={{ fontWeight: 600 }}>{std.rollNo}</td>
-                    <td>{std.name}</td>
-                    <td><span className="badge-course">{std.course.toUpperCase()}</span></td>
-                    <td>{std.email}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button onClick={() => handleEdit(std)} className="btn btn-sm btn-edit">Edit</button>
-                      <button onClick={() => handleDelete(std._id)} className="btn btn-sm btn-delete">Delete</button>
-                    </td>
-                  </tr>
-                ))
+                filteredStudents.map((student) => {
+                  const resolvedStatus = (student.status || 'Active').toLowerCase();
+                  return (
+                    <tr key={student._id}>
+                      <td className="cell-roll">
+                        <span className="roll-chip">{student.rollNo || 'N/A'}</span>
+                      </td>
+                      <td className="cell-name">{student.name}</td>
+                      <td className="cell-email">{student.email}</td>
+                      <td>
+                        <span className="badge-dept">{(student.course || 'B.Tech').toUpperCase()}</span>
+                      </td>
+                      <td>
+                        <span className={`pill-status ${resolvedStatus}`}>
+                          <span className="status-dot"></span>
+                          {student.status || 'Active'}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div className="action-buttons-wrap">
+                          <button 
+                            className="btn-tbl edit" 
+                            onClick={() => openModal(student)}
+                          >
+                            Edit
+                          </button>
+                          <button 
+                            className="btn-tbl delete" 
+                            onClick={() => handleDelete(student._id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan="5" className="empty-cell">No matching student records found.</td>
+                  <td colSpan="6" className="empty-table-state">
+                    No matching student records located.
+                  </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-      </div>
+      </main>
+
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-surface">
+            <div className="modal-head">
+              <div>
+                <h3>{editingStudentId ? 'Modify Student Record' : 'Enroll New Student'}</h3>
+                <p className="modal-subtext">Fill in the fields below to update records in MongoDB.</p>
+              </div>
+              <button className="btn-close-modal" onClick={closeModal}>✕</button>
+            </div>
+
+            <form onSubmit={handleSaveStudent}>
+              <div className="modal-inputs">
+                <div className="modal-field">
+                  <label>Full Name</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="e.g. John Doe"
+                    value={formData.name} 
+                    onChange={(e) => setFormData({...formData, name: e.target.value})} 
+                  />
+                </div>
+
+                <div className="modal-field">
+                  <label>Roll Number / Enrollment ID</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="e.g. 2026101"
+                    value={formData.rollNo} 
+                    onChange={(e) => setFormData({...formData, rollNo: e.target.value})} 
+                  />
+                </div>
+
+                <div className="modal-field">
+                  <label>Email Address</label>
+                  <input 
+                    type="email" 
+                    required 
+                    placeholder="student@university.edu"
+                    value={formData.email} 
+                    onChange={(e) => setFormData({...formData, email: e.target.value})} 
+                  />
+                </div>
+
+                <div className="fields-grid-2">
+                  <div className="modal-field">
+                    <label>Department / Program</label>
+                    <select 
+                      value={formData.course} 
+                      onChange={(e) => setFormData({...formData, course: e.target.value})}
+                    >
+                      <option value="B.Tech">B.Tech</option>
+                      <option value="BCA">BCA</option>
+                      <option value="MCA">MCA</option>
+                      <option value="MBA">MBA</option>
+                    </select>
+                  </div>
+
+                  <div className="modal-field">
+                    <label>Enrollment Status</label>
+                    <select 
+                      value={formData.status} 
+                      onChange={(e) => setFormData({...formData, status: e.target.value})}
+                    >
+                      <option value="Active">Active</option>
+                      <option value="Graduated">Graduated</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" className="btn-modal-cancel" onClick={closeModal}>
+                  Dismiss
+                </button>
+                <button type="submit" className="btn-modal-submit">
+                  {editingStudentId ? 'Save Changes' : 'Confirm Enrollment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-export default App;

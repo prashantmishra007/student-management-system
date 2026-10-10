@@ -2,59 +2,54 @@ const express = require('express');
 const router = express.Router();
 const Student = require('../models/Student');
 
-// 1. Naya Student Add Karna (Create)
-router.post('/add', async (req, res) => {
-  try {
-    const student = new Student(req.body);
-    const savedStudent = await student.save();
-    res.status(201).json(savedStudent);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-});
-
-// 2. Saare Students Ki List Dekhna (Read All)
+// Get all students
 router.get('/', async (req, res) => {
   try {
-    const students = await Student.find();
+    const students = await Student.find().sort({ createdAt: -1 });
     res.json(students);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching students', error: err.message });
   }
 });
 
-// 3. Single Student Ki Details Dekhna (Read One)
-router.get('/:id', async (req, res) => {
+// Add new student
+router.post('/', async (req, res) => {
   try {
-    const student = await Student.findById(req.params.id);
-    if (!student) return res.status(404).json({ message: 'Student nahi mila' });
-    res.json(student);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    const newStudent = new Student(req.body);
+    await newStudent.save();
+    res.status(201).json(newStudent);
+  } catch (err) {
+    res.status(400).json({ message: 'Error creating student', error: err.message });
   }
 });
 
-// 4. Student Details Update Karna (Update)
+// Update student (Edit)
 router.put('/:id', async (req, res) => {
   try {
     const updatedStudent = await Student.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true }
+      { new: true, runValidators: true }
     );
+    if (!updatedStudent) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
     res.json(updatedStudent);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
+  } catch (err) {
+    res.status(400).json({ message: 'Error updating student', error: err.message });
   }
 });
 
-// 5. Student Delete Karna (Delete)
+// Delete student
 router.delete('/:id', async (req, res) => {
   try {
-    await Student.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Student successfully delete ho gaya' });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    const deletedStudent = await Student.findByIdAndDelete(req.params.id);
+    if (!deletedStudent) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+    res.json({ message: 'Student deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: 'Error deleting student', error: err.message });
   }
 });
 
