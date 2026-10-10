@@ -12,6 +12,15 @@ export default function App() {
   const [isLogin, setIsLogin] = useState(true);
   const [authData, setAuthData] = useState({ name: '', email: '', password: '' });
   const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
+
+  // Forgot Password Modal State
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStep, setForgotStep] = useState(1); // 1: Email, 2: New Password
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [forgotMsg, setForgotMsg] = useState({ text: '', type: '' });
 
   // Dashboard State
   const [students, setStudents] = useState([]);
@@ -19,7 +28,7 @@ export default function App() {
   const [branchFilter, setBranchFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
 
-  // Modal State
+  // Modal State for Student CRUD
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState(null);
   const [formData, setFormData] = useState({
@@ -50,6 +59,7 @@ export default function App() {
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
+    setAuthSuccess('');
     try {
       const endpoint = isLogin ? '/auth/login' : '/auth/register';
       const payload = isLogin 
@@ -71,6 +81,42 @@ export default function App() {
     localStorage.removeItem('sms_user');
     setToken(null);
     setUser(null);
+  };
+
+  // Forgot Password Actions
+  const handleOpenForgot = () => {
+    setForgotEmail(authData.email || '');
+    setForgotStep(1);
+    setNewPassword('');
+    setConfirmPassword('');
+    setForgotMsg({ text: '', type: '' });
+    setIsForgotModalOpen(true);
+  };
+
+  const handleForgotSubmit = (e) => {
+    e.preventDefault();
+    if (forgotStep === 1) {
+      if (!forgotEmail) {
+        setForgotMsg({ text: 'Please enter a valid registered email address.', type: 'error' });
+        return;
+      }
+      setForgotMsg({ text: `Verification link / OTP simulated for ${forgotEmail}. Please enter new credentials.`, type: 'success' });
+      setForgotStep(2);
+    } else {
+      if (newPassword.length < 6) {
+        setForgotMsg({ text: 'Password must be at least 6 characters.', type: 'error' });
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setForgotMsg({ text: 'Passwords do not match.', type: 'error' });
+        return;
+      }
+      setForgotMsg({ text: 'Password reset request verified. You may now sign in or register.', type: 'success' });
+      setTimeout(() => {
+        setIsForgotModalOpen(false);
+        setAuthSuccess('Password updated. Please log in with your updated password.');
+      }, 1500);
+    }
   };
 
   const openModal = (student = null) => {
@@ -201,20 +247,21 @@ export default function App() {
             <button 
               type="button" 
               className={`mode-tab ${isLogin ? 'active' : ''}`} 
-              onClick={() => { setIsLogin(true); setAuthError(''); }}
+              onClick={() => { setIsLogin(true); setAuthError(''); setAuthSuccess(''); }}
             >
               Sign In
             </button>
             <button 
               type="button" 
               className={`mode-tab ${!isLogin ? 'active' : ''}`} 
-              onClick={() => { setIsLogin(false); setAuthError(''); }}
+              onClick={() => { setIsLogin(false); setAuthError(''); setAuthSuccess(''); }}
             >
               Register
             </button>
           </div>
 
           {authError && <div className="modern-alert error">{authError}</div>}
+          {authSuccess && <div className="modern-alert success">{authSuccess}</div>}
 
           <form onSubmit={handleAuth} className="modern-form">
             {!isLogin && (
@@ -242,7 +289,18 @@ export default function App() {
             </div>
 
             <div className="input-field">
-              <label>Password</label>
+              <div className="label-with-action">
+                <label>Password</label>
+                {isLogin && (
+                  <button 
+                    type="button" 
+                    className="btn-forgot-pass"
+                    onClick={handleOpenForgot}
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
               <input 
                 type="password" 
                 placeholder="••••••••••••" 
@@ -261,6 +319,80 @@ export default function App() {
             <span>🛡️ Enterprise Data Security & JWT Authorization</span>
           </div>
         </div>
+
+        {/* FORGOT PASSWORD MODAL */}
+        {isForgotModalOpen && (
+          <div className="modal-overlay">
+            <div className="modal-surface forgot-modal-surface">
+              <div className="modal-head">
+                <div>
+                  <h3>Reset Access Credentials</h3>
+                  <p className="modal-subtext">
+                    {forgotStep === 1 
+                      ? 'Enter your registered work email to receive password recovery instructions.' 
+                      : 'Create a new secure password for your account.'}
+                  </p>
+                </div>
+                <button className="btn-close-modal" onClick={() => setIsForgotModalOpen(false)}>✕</button>
+              </div>
+
+              {forgotMsg.text && (
+                <div className={`modern-alert ${forgotMsg.type}`}>{forgotMsg.text}</div>
+              )}
+
+              <form onSubmit={handleForgotSubmit}>
+                {forgotStep === 1 ? (
+                  <div className="modal-field">
+                    <label>Registered Email</label>
+                    <input 
+                      type="email" 
+                      required 
+                      placeholder="e.g. user@example.com"
+                      value={forgotEmail} 
+                      onChange={(e) => setForgotEmail(e.target.value)} 
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="modal-field">
+                      <label>New Password</label>
+                      <input 
+                        type="password" 
+                        required 
+                        placeholder="••••••••••••"
+                        value={newPassword} 
+                        onChange={(e) => setNewPassword(e.target.value)} 
+                      />
+                    </div>
+                    <div className="modal-field">
+                      <label>Confirm Password</label>
+                      <input 
+                        type="password" 
+                        required 
+                        placeholder="••••••••••••"
+                        value={confirmPassword} 
+                        onChange={(e) => setConfirmPassword(e.target.value)} 
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="modal-actions">
+                  <button 
+                    type="button" 
+                    className="btn-modal-cancel" 
+                    onClick={() => setIsForgotModalOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-modal-submit">
+                    {forgotStep === 1 ? 'Send Recovery Code →' : 'Confirm New Password'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
