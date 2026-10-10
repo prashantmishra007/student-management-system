@@ -3,11 +3,16 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { Resend } = require('resend');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const { JWT_SECRET } = require('../middleware/authMiddleware');
 
-// Initialize Resend API client
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Google OAuth2 Client
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '196669776050-ppalg9hb322gvk6vkvc8imf1gf0iunkp.apps.googleusercontent.com';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+// Initialize Resend API client with fallback
+const resend = new Resend(process.env.RESEND_API_KEY || 're_placeholder_key_2026');
 
 // Temporary in-memory OTP store (email -> { otp, expiresAt })
 const otpStore = new Map();
@@ -71,6 +76,57 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error during login', error: error.message });
+  }
+});
+
+// Google Sign-In / Auto-Register Route
+router.post('/google-login', async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).json({ message: 'Google credential token is missing.' });
+    }
+
+    // Verify Google ID Token
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { email, name } = payload;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Unable to retrieve email from Google token.' });
+    }
+
+    // Check if user already exists
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      // Auto-create user account with random secure password
+      const randomPassword = Math.random().toString(36).slice(-10) + 'Gg7!';
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+      user = new User({
+        name: name || 'Google User',
+        email: email.toLowerCase(),
+        password: hashedPassword,
+      });
+      await user.save();
+    }
+
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (err) {
+    console.error('Google Auth Error:', err);
+    res.status(401).json({ message: 'Google authentication failed', error: err.message });
   }
 });
 

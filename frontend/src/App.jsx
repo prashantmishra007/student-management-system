@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import './App.css';
 
-const API_BASE = 'https://student-management-system-1-47hq.onrender.com/api';
+const API_BASE = 'https://student-management-system-27tx.onrender.com/api';
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('sms_token') || null);
@@ -89,7 +89,35 @@ export default function App() {
   };
 
   const handleGoogleSignIn = () => {
-    alert('Google Identity Services initialized. Connecting to workspace OAuth provider...');
+    /* global google */
+    if (typeof window.google === 'undefined') {
+      alert('Google SDK is still loading. Please check your connection or refresh the page.');
+      return;
+    }
+
+    try {
+      window.google.accounts.id.initialize({
+        client_id: '196669776050-ppalg9hb322gvk6vkvc8imf1gf0iunkp.apps.googleusercontent.com',
+        callback: async (response) => {
+          try {
+            const res = await axios.post(`${API_BASE}/auth/google-login`, {
+              credential: response.credential
+            });
+            localStorage.setItem('sms_token', res.data.token);
+            localStorage.setItem('sms_user', JSON.stringify(res.data.user));
+            setToken(res.data.token);
+            setUser(res.data.user);
+          } catch (err) {
+            setAuthError(err.response?.data?.message || 'Google authentication failed.');
+          }
+        }
+      });
+
+      window.google.accounts.id.prompt();
+    } catch (err) {
+      console.error('Google Sign-In Trigger Error:', err);
+      alert('Unable to initialize Google Sign-In prompt.');
+    }
   };
 
   const handleLogout = () => {
